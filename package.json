@@ -35,6 +35,7 @@
     "type": "git",
     "url": "https://github.com/ArvoreEducacao/bug-jar.git"
   },
+  "packageManager": "pnpm@10.28.1",
   "publishConfig": {
     "access": "public"
   },
