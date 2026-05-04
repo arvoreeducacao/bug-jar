@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bug Jar — Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        padding: 40px;
+        max-width: 800px;
+        margin: 0 auto;
+        background: #fafafa;
+      }
+      h1 {
+        margin-bottom: 8px;
+      }
+      p {
+        color: #666;
+        margin-bottom: 24px;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 32px;
+      }
+      button {
+        padding: 10px 20px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        background: #fff;
+        cursor: pointer;
+        font-size: 14px;
+      }
+      button:hover {
+        background: #f5f5f5;
+      }
+      .log {
+        background: #1a1a1a;
+        color: #0f0;
+        padding: 16px;
+        border-radius: 8px;
+        font-family: monospace;
+        font-size: 12px;
+        max-height: 300px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+      }
+      .info {
+        margin-top: 24px;
+        padding: 16px;
+        background: #f0f9ff;
+        border: 1px solid #bae6fd;
+        border-radius: 8px;
+        font-size: 13px;
+        color: #0369a1;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🪲 Bug Jar Demo</h1>
+    <p>
+      Click the buttons below to simulate activity, then click "Reportar Bug" in
+      the bottom-right corner.
+    </p>
+
+    <div class="actions">
+      <button onclick="simulateFetch()">Simulate API Call</button>
+      <button onclick="simulateError()">Throw Error</button>
+      <button onclick="simulateConsole()">Console Logs</button>
+      <button onclick="simulateFailedFetch()">Failed Request</button>
+      <button onclick="simulateSlowFetch()">Slow Request</button>
+    </div>
+
+    <div class="log" id="log">
+      Ready. Interact with the page and then report a bug.
+    </div>
+
+    <div class="info">
+      <strong>Como usar:</strong><br />
+      1. Clique em "Reportar Bug" no canto inferior direito<br />
+      2. (Opcional) Clique em "Gravar Tela" para capturar vídeo — o modal fecha
+      e o botão fica vermelho<br />
+      3. Reproduza o bug normalmente<br />
+      4. Clique no botão vermelho "Gravando..." para abrir o modal novamente<br />
+      5. Descreva o bug e clique "Enviar Relatório"<br />
+      6. Um arquivo .zip será baixado com: report.json + summary.md +
+      screenshot.png + recording.webm
+    </div>
+
+    <script type="module">
+      import { init } from "./src/index.ts";
+
+      const jar = init({
+        uiLabel: "Reportar Bug",
+      });
+
+      window.jar = jar;
+    </script>
+
+    <script>
+      function log(msg) {
+        const el = document.getElementById("log");
+        el.textContent += "\n" + msg;
+        el.scrollTop = el.scrollHeight;
+      }
+
+      function simulateFetch() {
+        fetch("https://jsonplaceholder.typicode.com/posts/1")
+          .then((r) => r.json())
+          .then((data) => log("Fetch OK: " + data.title));
+      }
+
+      function simulateError() {
+        throw new Error("Simulated uncaught error!");
+      }
+
+      function simulateConsole() {
+        console.log("Normal log message");
+        console.warn("Warning message", { detail: "something" });
+        console.error("Error message", new Error("test"));
+      }
+
+      function simulateFailedFetch() {
+        fetch("https://httpstat.us/500")
+          .then((r) => log("Got status: " + r.status))
+          .catch((e) => log("Fetch failed: " + e.message));
+      }
+
+      function simulateSlowFetch() {
+        fetch("https://httpstat.us/200?sleep=3000")
+          .then((r) => log("Slow request completed: " + r.status))
+          .catch((e) => log("Slow request failed: " + e.message));
+      }
+    </script>
+  </body>
+</html>
