@@ -54,26 +54,14 @@ export class BugJarUI {
     const posClass = `bug-jar--${pos}`;
     const compactClass = isCompact ? ' bug-jar-trigger--compact' : '';
 
-    if (isCompact) {
-      return `
-        <button class="bug-jar-trigger ${posClass}${compactClass}" aria-label="${this.config.uiLabel}">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M8 2l1.88 1.88M14.12 3.88L16 2M9 7.13v-1a3.003 3.003 0 116 0v1"/>
-            <path d="M12 20c-3.3 0-6-2.7-6-6v-3a6 6 0 0112 0v3c0 3.3-2.7 6-6 6z"/>
-            <path d="M12 20v2M6 13H2M22 13h-4M6 17l-2 2M18 17l2 2M6 9l-2-2M18 9l2-2"/>
-          </svg>
-        </button>
-      `;
-    }
-
     return `
-      <button class="bug-jar-trigger ${posClass}" aria-label="${this.config.uiLabel}">
+      <button class="bug-jar-trigger ${posClass}${compactClass}" aria-label="${this.config.uiLabel}">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M8 2l1.88 1.88M14.12 3.88L16 2M9 7.13v-1a3.003 3.003 0 116 0v1"/>
           <path d="M12 20c-3.3 0-6-2.7-6-6v-3a6 6 0 0112 0v3c0 3.3-2.7 6-6 6z"/>
           <path d="M12 20v2M6 13H2M22 13h-4M6 17l-2 2M18 17l2 2M6 9l-2-2M18 9l2-2"/>
         </svg>
-        <span>${this.config.uiLabel}</span>
+        ${isCompact ? '' : `<span>${this.config.uiLabel}</span>`}
       </button>
       <div class="bug-jar-modal" hidden>
         <div class="bug-jar-modal-backdrop"></div>
