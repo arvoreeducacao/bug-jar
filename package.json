@@ -1,6 +1,6 @@
 {
   "name": "@arvoretech/bug-jar",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Capture everything for non-technical people to help debug. One script tag, zero config.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
