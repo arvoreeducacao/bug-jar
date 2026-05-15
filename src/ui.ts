@@ -20,17 +20,24 @@ export class BugJarUI {
   mount(): void {
     if (this.container) return;
 
-    if (this.config.hideOnMobile && typeof window !== 'undefined' && window.innerWidth < 768) {
+    const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+    
+    if (this.config.hideOnMobile && isMobile) {
       return;
     }
 
     this.container = document.createElement("div");
     this.container.id = "bug-jar-widget";
-    this.container.innerHTML = this.getWidgetHTML();
+    
+    const isCompact = isMobile && this.config.uiCompactOnMobile;
+    
+    this.container.innerHTML = this.getWidgetHTML(isCompact);
+    this.container.dataset.compact = String(isCompact);
     document.body.appendChild(this.container);
 
-    this.injectStyles();
+    this.injectStyles(isCompact);
     this.bindEvents();
+    this.makeDraggable();
   }
 
   unmount(): void {
@@ -42,9 +49,22 @@ export class BugJarUI {
     if (style) style.remove();
   }
 
-  private getWidgetHTML(): string {
+  private getWidgetHTML(isCompact = false): string {
     const pos = this.config.uiPosition;
     const posClass = `bug-jar--${pos}`;
+    const compactClass = isCompact ? ' bug-jar-trigger--compact' : '';
+
+    if (isCompact) {
+      return `
+        <button class="bug-jar-trigger ${posClass}${compactClass}" aria-label="${this.config.uiLabel}">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M8 2l1.88 1.88M14.12 3.88L16 2M9 7.13v-1a3.003 3.003 0 116 0v1"/>
+            <path d="M12 20c-3.3 0-6-2.7-6-6v-3a6 6 0 0112 0v3c0 3.3-2.7 6-6 6z"/>
+            <path d="M12 20v2M6 13H2M22 13h-4M6 17l-2 2M18 17l2 2M6 9l-2-2M18 9l2-2"/>
+          </svg>
+        </button>
+      `;
+    }
 
     return `
       <button class="bug-jar-trigger ${posClass}" aria-label="${this.config.uiLabel}">
@@ -117,23 +137,33 @@ export class BugJarUI {
     ) as HTMLElement;
 
     const openModal = () => {
-      modal.hidden = false;
-      textarea.focus();
+      if (this.container?.dataset.compact === 'true') {
+        const btn = this.container.querySelector('.bug-jar-trigger');
+        btn?.classList.add('bug-jar-trigger--expanded');
+      }
+      if (modal) modal.hidden = false;
+      textarea?.focus();
       this.updateRecordingUI(recordBtn, recordingStatus);
     };
 
     const closeModal = () => {
-      modal.hidden = true;
-      textarea.value = "";
-      status.hidden = true;
+      if (modal) modal.hidden = true;
+      if (textarea) textarea.value = "";
+      if (status) {
+        status.hidden = true;
+      }
+      if (this.container?.dataset.compact === 'true') {
+        const btn = this.container.querySelector('.bug-jar-trigger');
+        btn?.classList.remove('bug-jar-trigger--expanded');
+      }
     };
 
     trigger.addEventListener("click", openModal);
-    backdrop.addEventListener("click", closeModal);
-    closeBtn.addEventListener("click", closeModal);
-    cancelBtn.addEventListener("click", closeModal);
+    if (backdrop) backdrop.addEventListener("click", closeModal);
+    if (closeBtn) closeBtn.addEventListener("click", closeModal);
+    if (cancelBtn) cancelBtn.addEventListener("click", closeModal);
 
-    recordBtn.addEventListener("click", async () => {
+    recordBtn?.addEventListener("click", async () => {
       if (this.screenRecorder.isRecording) {
         return;
       }
@@ -142,10 +172,9 @@ export class BugJarUI {
       this.updateTriggerForRecording(trigger);
     });
 
-    submitBtn.addEventListener("click", async () => {
-      const description = textarea.value.trim();
-      if (!description) {
-        textarea.classList.add("bug-jar-error");
+    submitBtn?.addEventListener("click", async () => {
+      const description = textarea?.value.trim();
+      if (!description || !textarea || !submitBtn || !status) {
         return;
       }
       textarea.classList.remove("bug-jar-error");
@@ -171,15 +200,17 @@ export class BugJarUI {
       }
     });
 
-    textarea.addEventListener("input", () => {
-      textarea.classList.remove("bug-jar-error");
+    textarea?.addEventListener("input", () => {
+      textarea?.classList.remove("bug-jar-error");
     });
   }
 
   private updateRecordingUI(
-    recordBtn: HTMLElement,
-    recordingStatus: HTMLElement,
+    recordBtn: HTMLElement | null,
+    recordingStatus: HTMLElement | null,
   ): void {
+    if (!recordBtn || !recordingStatus) return;
+    
     if (this.screenRecorder.isRecording) {
       recordBtn.classList.add("bug-jar-record-btn--active");
       recordingStatus.hidden = false;
@@ -205,7 +236,81 @@ export class BugJarUI {
     if (span) span.textContent = this.config.uiLabel;
   }
 
-  private injectStyles(): void {
+  private makeDraggable(): void {
+    if (!this.container) return;
+    
+    const trigger = this.container.querySelector('.bug-jar-trigger') as HTMLElement;
+    if (!trigger) return;
+
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    let initialX = 0, initialY = 0;
+    let hasMoved = false;
+
+    const onStart = (e: MouseEvent | TouchEvent) => {
+      const event = 'touches' in e ? e.touches[0] : e;
+      startX = event.clientX;
+      startY = event.clientY;
+      
+      const rect = trigger.getBoundingClientRect();
+      initialX = rect.left;
+      initialY = rect.top;
+      
+      hasMoved = false;
+      isDragging = true;
+      trigger.classList.add('bug-jar-trigger--dragging');
+      
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onEnd);
+      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('touchend', onEnd);
+    };
+
+    const onMove = (e: MouseEvent | TouchEvent) => {
+      if (!isDragging) return;
+      
+      e.preventDefault();
+      
+      const event = 'touches' in e ? e.touches[0] : e;
+      const deltaX = event.clientX - startX;
+      const deltaY = event.clientY - startY;
+      
+      if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+        hasMoved = true;
+      }
+      
+      const newX = initialX + deltaX;
+      const newY = initialY + deltaY;
+      
+      trigger.style.position = 'fixed';
+      trigger.style.left = `${newX}px`;
+      trigger.style.top = `${newY}px`;
+      trigger.style.right = 'auto';
+      trigger.style.bottom = 'auto';
+      trigger.classList.remove('bug-jar--bottom-right', 'bug-jar--bottom-left', 'bug-jar--top-right', 'bug-jar--top-left');
+    };
+
+    const onEnd = () => {
+      isDragging = false;
+      trigger.classList.remove('bug-jar-trigger--dragging');
+      
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onEnd);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onEnd);
+      
+      if (!hasMoved) {
+        return;
+      }
+      
+      trigger.style.cursor = '';
+    };
+
+    trigger.addEventListener('mousedown', onStart);
+    trigger.addEventListener('touchstart', onStart, { passive: true });
+  }
+
+  private injectStyles(isCompact = false): void {
     if (document.getElementById("bug-jar-styles")) return;
 
     const style = document.createElement("style");
@@ -234,11 +339,38 @@ export class BugJarUI {
         cursor: pointer;
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         transition: transform 0.15s, box-shadow 0.15s, background 0.3s;
+        user-select: none;
+        touch-action: none;
       }
 
       .bug-jar-trigger:hover {
         transform: scale(1.05);
         box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+      }
+
+      .bug-jar-trigger--compact {
+        padding: 12px;
+        border-radius: 50%;
+        width: 44px;
+        height: 44px;
+        justify-content: center;
+      }
+
+      .bug-jar-trigger--compact span {
+        display: none;
+      }
+
+      .bug-jar-trigger--expanded {
+        padding: 10px 16px;
+        width: auto;
+        height: auto;
+        border-radius: 24px;
+      }
+
+      .bug-jar-trigger--dragging {
+        cursor: grabbing;
+        transform: scale(1.1);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.3);
       }
 
       .bug-jar-trigger--recording {
@@ -255,10 +387,6 @@ export class BugJarUI {
       .bug-jar--bottom-left { bottom: 20px; left: 20px; }
       .bug-jar--top-right { top: 20px; right: 20px; }
       .bug-jar--top-left { top: 20px; left: 20px; }
-
-      @media (max-width: 768px) {
-        .bug-jar-trigger { display: none !important; }
-      }
 
       .bug-jar-modal {
         position: fixed;
