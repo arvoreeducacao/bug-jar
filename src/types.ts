@@ -18,6 +18,7 @@ export interface BugJarConfig {
   ui: boolean;
   uiPosition: "bottom-right" | "bottom-left" | "top-right" | "top-left";
   uiLabel: string;
+  hideOnMobile?: boolean;
 }
 
 export interface NetworkEntry {

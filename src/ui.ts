@@ -20,6 +20,10 @@ export class BugJarUI {
   mount(): void {
     if (this.container) return;
 
+    if (this.config.hideOnMobile && typeof window !== 'undefined' && window.innerWidth < 768) {
+      return;
+    }
+
     this.container = document.createElement("div");
     this.container.id = "bug-jar-widget";
     this.container.innerHTML = this.getWidgetHTML();
@@ -251,6 +255,10 @@ export class BugJarUI {
       .bug-jar--bottom-left { bottom: 20px; left: 20px; }
       .bug-jar--top-right { top: 20px; right: 20px; }
       .bug-jar--top-left { top: 20px; left: 20px; }
+
+      @media (max-width: 768px) {
+        .bug-jar-trigger { display: none !important; }
+      }
 
       .bug-jar-modal {
         position: fixed;
