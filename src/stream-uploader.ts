@@ -11,6 +11,8 @@ export type ChunkUrlFetcher = (params: {
   seq: number;
 }) => Promise<ChunkUrlResponse>;
 
+type FetchLike = typeof fetch;
+
 export class StreamUploader {
   private encryptor = new StreamEncryptor();
   private seq = 0;
@@ -23,6 +25,7 @@ export class StreamUploader {
     private readonly stream: "data" | "video",
     private readonly publicKey: string,
     private readonly fetchChunkUrl: ChunkUrlFetcher,
+    private readonly rawFetch: FetchLike = fetch,
   ) {}
 
   private async ensureInit(): Promise<void> {
@@ -52,7 +55,7 @@ export class StreamUploader {
       seq: this.seq,
     });
     this.seq += 1;
-    await fetch(uploadUrl, {
+    await this.rawFetch(uploadUrl, {
       method: "PUT",
       headers: { "Content-Type": "application/octet-stream" },
       body: bytes as unknown as BodyInit,
