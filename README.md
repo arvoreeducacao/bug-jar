@@ -110,18 +110,44 @@ private S3 bucket via a presigned URL. No AWS credentials ever reach the browser
 Flow:
 
 1. Staff (admin) calls `POST /debug-sessions` with the target app URL and gets back
-   a `debugLink` (`https://app.../?debug=<token>`), the presigned PUT URL, the
-   server public key, and an expiry.
-2. The user opens the link. Bug Jar detects `?debug=<token>`, fetches the session
-   from `debugSessionEndpoint`, starts screen recording, and shows a top banner.
-3. The user clicks **Finalizar e enviar**. Bug Jar builds the ZIP, encrypts it
-   (libsodium sealed box + secretbox hybrid), and uploads the encrypted blob to S3.
-4. Staff downloads the `.bin` via `GET /debug-sessions/:token/download` and
-   decrypts it offline with the private key.
+   a `debugLink` (`https://app.../?debug=<token>`), the server public key, and an expiry.
+2. The user opens the link. Bug Jar detects `?debug=<token>`, persists the token in
+   a `.arvore.com.br` cookie, fetches the session, starts screen recording, and
+   shows an animated **session border** (no button, no banner).
+3. The user just uses the app. The session survives navigation across apps
+   (app-v2 → legacy → reader) by re-hydrating the token from the cookie on each
+   page. Each page streams **encrypted chunks** to S3 in real time:
+   - **data** (network/console/errors/actions/storage) every 5s as JSONL
+   - **video** chunks straight from `MediaRecorder` as they are produced
+   Chunks are uploaded to `debug/<token>/<pageId>/<stream>/<seq>.bin` via per-chunk
+   presigned PUT URLs (`POST /debug-sessions/:token/chunk-url`). Page metadata goes
+   to `debug/<token>/<pageId>/meta.json` (`POST /debug-sessions/:token/meta`).
+4. Staff reconstructs the session offline:
+   ```bash
+   BUG_JAR_API=https://api.arvore.com.br/debug-sessions \
+   BUG_JAR_API_TOKEN=<admin-jwt> \
+   node scripts/decrypt-session.cjs <token> ./out
+   ```
+   This reads the X25519 private key from Secrets Manager (`bug-jar/keypair`),
+   downloads all chunks via `GET /debug-sessions/:token/download`, decrypts each
+   per-page stream, and writes `<pageId>/data.jsonl`, `<pageId>/video.webm`,
+   `<pageId>/meta.json`.
 
-The package leaves the browser already unreadable; only the holder of the X25519
-private key can open it. `libsodium-wrappers` is loaded dynamically, so it only
-ships when debug mode is actually used.
+## Encryption
+
+Each stream (data and video, per page) is encrypted with libsodium
+`crypto_secretstream_xchacha20poly1305`: a random symmetric key drives the stream,
+and that key is sealed with `crypto_box_seal` (X25519) to the server public key.
+The first chunk of every stream is `[magic][version][sealedKeyLen][sealedKey][header]`;
+subsequent chunks are the encrypted stream messages, the last carrying `TAG_FINAL`.
+Chunks leave the browser already unreadable; only the holder of the X25519 private
+key can open them. `libsodium-wrappers` is loaded dynamically, so it only ships
+when debug mode is actually used.
+
+> Cross-app continuity works because all apps live under `*.arvore.com.br` and
+> share the session cookie. Screen recording restarts per app (the browser does
+> not allow `getDisplayMedia` to persist across full page loads / origins), so the
+> video is reconstructed per page rather than as one continuous file.
 
 
 ## Privacy & Security

@@ -3,9 +3,16 @@ export class ScreenRecorder {
   private chunks: Blob[] = [];
   private stream: MediaStream | null = null;
   private recording = false;
+  private onChunk: ((data: Uint8Array, final: boolean) => void) | null = null;
 
   get isRecording(): boolean {
     return this.recording;
+  }
+
+  setChunkHandler(
+    handler: (data: Uint8Array, final: boolean) => void,
+  ): void {
+    this.onChunk = handler;
   }
 
   async start(): Promise<void> {
@@ -27,6 +34,11 @@ export class ScreenRecorder {
       this.mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           this.chunks.push(event.data);
+          if (this.onChunk) {
+            void event.data
+              .arrayBuffer()
+              .then((buf) => this.onChunk?.(new Uint8Array(buf), false));
+          }
         }
       };
 

@@ -1,18 +1,7 @@
-import type { BugReport } from "./types";
-import { exportAsZip } from "./export";
-import { encryptForServer } from "./collectors/encryptor";
-
 export interface DebugSessionPayload {
   token: string;
   publicKey: string;
-  presignedPut: string;
-  reportId: string;
   expiresAt: number;
-}
-
-export interface DebugSessionConfig {
-  sessionEndpoint?: string;
-  token: string;
 }
 
 export function readDebugTokenFromUrl(): string | null {
@@ -42,22 +31,45 @@ export async function fetchDebugSession(
   return (await response.json()) as DebugSessionPayload;
 }
 
-export async function uploadEncryptedReport(
-  payload: DebugSessionPayload,
-  report: BugReport,
-  videoBlob: Blob | null,
+export function makeChunkUrlFetcher(sessionEndpoint: string) {
+  const base = sessionEndpoint.replace(/\/$/, "");
+  return async (params: {
+    token: string;
+    pageId: string;
+    stream: "data" | "video";
+    seq: number;
+  }): Promise<{ uploadUrl: string }> => {
+    const url = `${base}/${encodeURIComponent(params.token)}/chunk-url`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        pageId: params.pageId,
+        stream: params.stream,
+        seq: params.seq,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to get chunk URL (${response.status})`);
+    }
+    return (await response.json()) as { uploadUrl: string };
+  };
+}
+
+export async function uploadPageMeta(
+  sessionEndpoint: string,
+  token: string,
+  pageId: string,
+  meta: Record<string, unknown>,
 ): Promise<void> {
-  const zip = await exportAsZip(report, videoBlob);
-  const zipBytes = new Uint8Array(await zip.arrayBuffer());
-  const encrypted = await encryptForServer(zipBytes, payload.publicKey);
-
-  const response = await fetch(payload.presignedPut, {
-    method: "PUT",
-    headers: { "Content-Type": "application/octet-stream" },
-    body: encrypted,
+  const base = sessionEndpoint.replace(/\/$/, "");
+  const url = `${base}/${encodeURIComponent(token)}/meta`;
+  await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    keepalive: true,
+    body: JSON.stringify({ pageId, meta }),
   });
-
-  if (!response.ok) {
-    throw new Error(`Failed to upload report (${response.status})`);
-  }
 }

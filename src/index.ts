@@ -9,13 +9,20 @@ import { StorageCollector } from "./collectors/storage";
 import { ScreenshotCollector } from "./collectors/screenshot";
 import { FeatureFlagCollector } from "./collectors/feature-flags";
 import { ScreenRecorder } from "./collectors/screen-recorder";
-import { DebugBanner } from "./debug-banner";
+import { SessionBorder } from "./session-border";
 import {
   readDebugTokenFromUrl,
   fetchDebugSession,
-  uploadEncryptedReport,
+  makeChunkUrlFetcher,
+  uploadPageMeta,
   type DebugSessionPayload,
 } from "./debug-session";
+import { StreamUploader } from "./stream-uploader";
+import {
+  readSessionToken,
+  persistSessionToken,
+  clearSessionToken,
+} from "./session-token";
 import { generateId } from "./utils";
 import { generateSummary } from "./summary";
 import { exportAsZip } from "./export";
@@ -25,7 +32,7 @@ export { generateSummary } from "./summary";
 export { exportAsZip } from "./export";
 export type { DebugSessionPayload } from "./debug-session";
 
-const VERSION = "0.4.0";
+const VERSION = "0.6.0";
 
 const DEFAULT_CONFIG: BugJarConfig = {
   maxNetworkEntries: 100,
@@ -71,8 +78,13 @@ export class BugJar {
   private screenshot: ScreenshotCollector;
   private featureFlags: FeatureFlagCollector;
   private screenRecorder: ScreenRecorder;
-  private debugBanner: DebugBanner | null = null;
+  private sessionBorder: SessionBorder | null = null;
   private debugSession: DebugSessionPayload | null = null;
+  private dataUploader: StreamUploader | null = null;
+  private videoUploader: StreamUploader | null = null;
+  private pageId = generateId();
+  private dataInterval: ReturnType<typeof setInterval> | null = null;
+  private finalized = false;
   private started = false;
 
   constructor(config: Partial<BugJarConfig> = {}) {
@@ -102,7 +114,8 @@ export class BugJar {
       this.performance.start();
     }
 
-    const debugToken = this.config.debugToken ?? readDebugTokenFromUrl();
+    const debugToken =
+      this.config.debugToken ?? readDebugTokenFromUrl() ?? readSessionToken();
     if (debugToken) {
       void this.startDebugSession(debugToken);
     }
@@ -117,7 +130,7 @@ export class BugJar {
     this.errors.stop();
     this.userActions.stop();
     this.performance.stop();
-    this.debugBanner?.unmount();
+    this.sessionBorder?.unmount();
   }
 
   async startRecording(): Promise<void> {
@@ -200,48 +213,127 @@ export class BugJar {
     if (!this.config.debugSessionEndpoint) {
       return;
     }
+    const endpoint = this.config.debugSessionEndpoint;
 
-    const mountBanner = () => {
-      this.debugBanner = new DebugBanner(() => this.finishDebugSession());
-      this.debugBanner.mount();
+    const mountBorder = () => {
+      this.sessionBorder = new SessionBorder();
+      this.sessionBorder.mount();
     };
 
     if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", mountBanner);
+      document.addEventListener("DOMContentLoaded", mountBorder);
     } else {
-      mountBanner();
+      mountBorder();
     }
 
     try {
-      this.debugSession = await fetchDebugSession(
-        this.config.debugSessionEndpoint,
-        token,
+      this.debugSession = await fetchDebugSession(endpoint, token);
+      persistSessionToken(this.debugSession.token, this.debugSession.expiresAt);
+
+      const chunkUrlFetcher = makeChunkUrlFetcher(endpoint);
+      this.dataUploader = new StreamUploader(
+        this.debugSession.token,
+        this.pageId,
+        "data",
+        this.debugSession.publicKey,
+        chunkUrlFetcher,
       );
+      this.videoUploader = new StreamUploader(
+        this.debugSession.token,
+        this.pageId,
+        "video",
+        this.debugSession.publicKey,
+        chunkUrlFetcher,
+      );
+
+      void uploadPageMeta(endpoint, this.debugSession.token, this.pageId, {
+        url: window.location.href,
+        title: document.title,
+        startedAt: Date.now(),
+        environment: this.environment.collect(),
+      });
+
+      this.screenRecorder.setChunkHandler((data) => {
+        this.videoUploader?.pushChunk(data);
+      });
       await this.screenRecorder.start();
-    } catch (err) {
-      this.debugBanner?.setState(
-        "error",
-        err instanceof Error ? err.message : "Falha ao iniciar a sessão.",
-      );
+
+      this.startDataStreaming();
+      this.registerFlushHandlers();
+    } catch {
+      this.sessionBorder?.unmount();
     }
   }
 
-  private async finishDebugSession(): Promise<void> {
-    if (!this.debugSession) return;
+  private startDataStreaming(): void {
+    const pushSnapshot = (final: boolean) => {
+      if (!this.dataUploader) return;
+      const snapshot = {
+        pageId: this.pageId,
+        timestamp: Date.now(),
+        url: window.location.href,
+        network: this.network.getEntries(),
+        console: this.console.getEntries(),
+        errors: this.errors.getEntries(),
+        userActions: this.userActions.getEntries(),
+        storage: this.storage.collect(),
+        featureFlags: this.featureFlags.collect(),
+      };
+      const bytes = new TextEncoder().encode(JSON.stringify(snapshot) + "\n");
+      this.dataUploader.pushChunk(bytes, final);
+    };
 
-    try {
-      const videoBlob = await this.screenRecorder.stop();
-      this.debugBanner?.setState("encrypting");
-      const report = await this.capture("Debug session capture");
-      this.debugBanner?.setState("uploading");
-      await uploadEncryptedReport(this.debugSession, report, videoBlob);
-      this.debugBanner?.setState("done");
-    } catch (err) {
-      this.debugBanner?.setState(
-        "error",
-        err instanceof Error ? err.message : "Falha ao enviar o relatório.",
-      );
+    this.dataInterval = setInterval(() => pushSnapshot(false), 5000);
+  }
+
+  private registerFlushHandlers(): void {
+    const flush = () => {
+      void this.finalizePage();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flush();
+    });
+  }
+
+  private async finalizePage(): Promise<void> {
+    if (this.finalized || !this.debugSession) return;
+    this.finalized = true;
+
+    if (this.dataInterval) {
+      clearInterval(this.dataInterval);
+      this.dataInterval = null;
     }
+
+    const finalSnapshot = {
+      pageId: this.pageId,
+      timestamp: Date.now(),
+      url: window.location.href,
+      network: this.network.getEntries(),
+      console: this.console.getEntries(),
+      errors: this.errors.getEntries(),
+      userActions: this.userActions.getEntries(),
+      storage: this.storage.collect(),
+      featureFlags: this.featureFlags.collect(),
+      screenshot: this.config.captureScreenshot
+        ? await this.screenshot.capture()
+        : null,
+    };
+    const bytes = new TextEncoder().encode(JSON.stringify(finalSnapshot) + "\n");
+    this.dataUploader?.pushChunk(bytes, true);
+
+    await this.screenRecorder.stop();
+
+    await Promise.allSettled([
+      this.dataUploader?.flush() ?? Promise.resolve(),
+      this.videoUploader?.flush() ?? Promise.resolve(),
+    ]);
+  }
+
+  endDebugSession(): void {
+    clearSessionToken();
+    this.sessionBorder?.unmount();
+    void this.finalizePage();
   }
 }
 
