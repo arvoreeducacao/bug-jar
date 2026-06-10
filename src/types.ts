@@ -15,11 +15,6 @@ export interface BugJarConfig {
   sensitiveFields: string[];
   endpoint?: string;
   onCapture?: (report: BugReport) => void;
-  ui: boolean;
-  uiPosition: "bottom-right" | "bottom-left" | "top-right" | "top-left";
-  uiLabel: string;
-  hideOnMobile?: boolean;
-  uiCompactOnMobile?: boolean;
   debugToken?: string;
   debugSessionEndpoint?: string;
 }

@@ -67,8 +67,9 @@
   <body>
     <h1>🪲 Bug Jar Demo</h1>
     <p>
-      Click the buttons below to simulate activity, then click "Reportar Bug" in
-      the bottom-right corner.
+      Open this page with <code>?debug=&lt;token&gt;</code> to start a debug
+      session. Interact with the page below, then click "Finalizar e enviar" in
+      the top banner.
     </p>
 
     <div class="actions">
@@ -80,26 +81,26 @@
     </div>
 
     <div class="log" id="log">
-      Ready. Interact with the page and then report a bug.
+      Ready. Interact with the page and then finish the debug session.
     </div>
 
     <div class="info">
       <strong>Como usar:</strong><br />
-      1. Clique em "Reportar Bug" no canto inferior direito<br />
-      2. (Opcional) Clique em "Gravar Tela" para capturar vídeo — o modal fecha
-      e o botão fica vermelho<br />
+      1. Abra esta página com <code>?debug=&lt;token&gt;</code> (link gerado pelo
+      backend)<br />
+      2. A gravação de tela inicia automaticamente e um banner aparece no
+      topo<br />
       3. Reproduza o bug normalmente<br />
-      4. Clique no botão vermelho "Gravando..." para abrir o modal novamente<br />
-      5. Descreva o bug e clique "Enviar Relatório"<br />
-      6. Um arquivo .zip será baixado com: report.json + summary.md +
-      screenshot.png + recording.webm
+      4. Clique em "Finalizar e enviar"<br />
+      5. O pacote (report.json + summary.md + screenshot.png + recording.webm)
+      é cifrado no navegador e enviado pro S3
     </div>
 
     <script type="module">
       import { init } from "./src/index.ts";
 
       const jar = init({
-        uiLabel: "Reportar Bug",
+        debugSessionEndpoint: "http://localhost:3000/debug-sessions",
       });
 
       window.jar = jar;

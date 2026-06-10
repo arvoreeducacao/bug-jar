@@ -9,7 +9,6 @@ import { StorageCollector } from "./collectors/storage";
 import { ScreenshotCollector } from "./collectors/screenshot";
 import { FeatureFlagCollector } from "./collectors/feature-flags";
 import { ScreenRecorder } from "./collectors/screen-recorder";
-import { BugJarUI } from "./ui";
 import { DebugBanner } from "./debug-banner";
 import {
   readDebugTokenFromUrl,
@@ -56,9 +55,6 @@ const DEFAULT_CONFIG: BugJarConfig = {
   ],
   endpoint: undefined,
   onCapture: undefined,
-  ui: true,
-  uiPosition: "bottom-right",
-  uiLabel: "Reportar Bug",
   debugToken: undefined,
   debugSessionEndpoint: undefined,
 };
@@ -75,7 +71,6 @@ export class BugJar {
   private screenshot: ScreenshotCollector;
   private featureFlags: FeatureFlagCollector;
   private screenRecorder: ScreenRecorder;
-  private ui: BugJarUI | null = null;
   private debugBanner: DebugBanner | null = null;
   private debugSession: DebugSessionPayload | null = null;
   private started = false;
@@ -110,20 +105,6 @@ export class BugJar {
     const debugToken = this.config.debugToken ?? readDebugTokenFromUrl();
     if (debugToken) {
       void this.startDebugSession(debugToken);
-      return;
-    }
-
-    if (this.config.ui) {
-      this.ui = new BugJarUI(
-        this.config,
-        (desc) => this.captureAndExport(desc),
-        this.screenRecorder,
-      );
-      if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", () => this.ui?.mount());
-      } else {
-        this.ui.mount();
-      }
     }
   }
 
@@ -136,7 +117,7 @@ export class BugJar {
     this.errors.stop();
     this.userActions.stop();
     this.performance.stop();
-    this.ui?.unmount();
+    this.debugBanner?.unmount();
   }
 
   async startRecording(): Promise<void> {
