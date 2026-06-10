@@ -18,7 +18,7 @@ encrypted chunks, decrypts each per-page stream, and reconstructs:
   <out-dir>/<pageId>/meta.json
 
 Env:
-  BUG_JAR_API        Base URL, e.g. https://api.arvore.com.br/debug-sessions
+  BUG_JAR_API        Base URL, e.g. https://livros.arvore.com.br/debug-sessions
   BUG_JAR_API_TOKEN  Admin JWT (Bearer) for the download endpoint
   AWS_PROFILE        AWS profile to read the secret (default: arvore-prd)
   AWS_REGION         Secret region (default: sa-east-1)`,
