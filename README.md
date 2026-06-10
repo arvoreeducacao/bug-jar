@@ -34,7 +34,7 @@ opens it in the real app, and the encrypted package is uploaded to S3. See
 <script src="https://unpkg.com/@arvoretech/bug-jar"></script>
 <script>
   BugJar.init({
-    debugSessionEndpoint: 'https://api.arvore.com.br/debug-sessions',
+    debugSessionEndpoint: 'https://livros.arvore.com.br/debug-sessions',
   })
 </script>
 ```
@@ -67,7 +67,7 @@ init({
   onCapture: (report) => console.log(report),
 
   // Debug session
-  debugSessionEndpoint: 'https://api.arvore.com.br/debug-sessions',
+  debugSessionEndpoint: 'https://livros.arvore.com.br/debug-sessions',
   // debugToken is read automatically from the ?debug=<token> query param
 })
 ```
@@ -101,7 +101,7 @@ private S3 bucket via a presigned URL. No AWS credentials ever reach the browser
 <script src="https://unpkg.com/@arvoretech/bug-jar"></script>
 <script>
   BugJar.init({
-    debugSessionEndpoint: 'https://api.arvore.com.br/debug-sessions',
+    debugSessionEndpoint: 'https://livros.arvore.com.br/debug-sessions',
     // debugToken is read automatically from the ?debug=<token> query param
   })
 </script>
@@ -124,7 +124,7 @@ Flow:
    to `debug/<token>/<pageId>/meta.json` (`POST /debug-sessions/:token/meta`).
 4. Staff reconstructs the session offline:
    ```bash
-   BUG_JAR_API=https://api.arvore.com.br/debug-sessions \
+   BUG_JAR_API=https://livros.arvore.com.br/debug-sessions \
    BUG_JAR_API_TOKEN=<admin-jwt> \
    node scripts/decrypt-session.cjs <token> ./out
    ```
