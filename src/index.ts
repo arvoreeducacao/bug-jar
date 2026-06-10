@@ -16,6 +16,7 @@ import {
   makeChunkUrlFetcher,
   uploadPageMeta,
   type DebugSessionPayload,
+  type DebugSessionError,
 } from "./debug-session";
 import { StreamUploader } from "./stream-uploader";
 import { SpeedtestCollector } from "./collectors/speedtest";
@@ -33,7 +34,7 @@ export { generateSummary } from "./summary";
 export { exportAsZip } from "./export";
 export type { DebugSessionPayload } from "./debug-session";
 
-const VERSION = "0.7.0";
+const VERSION = "0.7.1";
 
 const DEFAULT_CONFIG: BugJarConfig = {
   maxNetworkEntries: 100,
@@ -116,8 +117,11 @@ export class BugJar {
       this.performance.start();
     }
 
-    const debugToken =
-      this.config.debugToken ?? readDebugTokenFromUrl() ?? readSessionToken();
+    const tokenFromUrl = this.config.debugToken ?? readDebugTokenFromUrl();
+    const debugToken = tokenFromUrl ?? readSessionToken();
+    if (tokenFromUrl) {
+      persistSessionToken(tokenFromUrl, Date.now() + 24 * 60 * 60 * 1000);
+    }
     if (debugToken) {
       void this.startDebugSession(debugToken);
     }
@@ -253,15 +257,19 @@ export class BugJar {
 
       void this.runSpeedtest(endpoint, this.debugSession.token, rawFetch);
 
+      this.startDataStreaming();
+      this.registerFlushHandlers();
+
       this.screenRecorder.setChunkHandler((data) => {
         this.videoUploader?.pushChunk(data);
       });
-      await this.screenRecorder.start();
-
-      this.startDataStreaming();
-      this.registerFlushHandlers();
-    } catch {
+      void this.screenRecorder.start();
+    } catch (error) {
       this.sessionBorder?.unmount();
+      const status = (error as DebugSessionError)?.status;
+      if (status === 401 || status === 403 || status === 404) {
+        clearSessionToken();
+      }
     }
   }
 

@@ -14,6 +14,10 @@ export function readDebugTokenFromUrl(): string | null {
   }
 }
 
+export interface DebugSessionError extends Error {
+  status?: number;
+}
+
 export async function fetchDebugSession(
   sessionEndpoint: string,
   token: string,
@@ -26,7 +30,11 @@ export async function fetchDebugSession(
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to load debug session (${response.status})`);
+    const error: DebugSessionError = new Error(
+      `Failed to load debug session (${response.status})`,
+    );
+    error.status = response.status;
+    throw error;
   }
 
   return (await response.json()) as DebugSessionPayload;
