@@ -1,12 +1,12 @@
 # 🪲 Bug Jar
 
-Capture everything for non-technical people to help debug. One script tag, zero config.
+Capture everything for non-technical people to help debug. One debug link, zero config.
 
-Bug Jar is a lightweight JavaScript library that silently records all browser activity (network requests, console logs, errors, user actions, performance metrics, and more) and lets anyone — even non-technical users — generate a complete debug report with a single click.
+Bug Jar is a lightweight JavaScript library that silently records all browser activity (network requests, console logs, errors, user actions, performance metrics, and more) and lets you capture a complete, encrypted debug session from a one-time debug link.
 
 ## Why?
 
-Because asking someone to "open DevTools and check the Network tab" doesn't scale. Bug Jar gives your support team, QA, and stakeholders a one-click way to capture everything developers need to reproduce and fix bugs.
+Because asking someone to "open DevTools and check the Network tab" doesn't scale. Bug Jar gives your support team and QA a link they can send to anyone to capture everything developers need to reproduce and fix bugs.
 
 ## What it captures
 
@@ -26,28 +26,17 @@ Because asking someone to "open DevTools and check the Network tab" doesn't scal
 
 ## Quick Start
 
-### Script tag (zero config)
+Bug Jar runs as a **debug session**: staff generates a one-time link, the user
+opens it in the real app, and the encrypted package is uploaded to S3. See
+[Debug Session Mode](#debug-session-mode-encrypted-upload-to-s3) below.
 
 ```html
 <script src="https://unpkg.com/@arvoretech/bug-jar"></script>
 <script>
-  BugJar.init();
+  BugJar.init({
+    debugSessionEndpoint: 'https://api.arvore.com.br/debug-sessions',
+  })
 </script>
-```
-
-### NPM
-
-```bash
-npm install @arvoretech/bug-jar
-```
-
-```typescript
-import { init } from '@arvoretech/bug-jar'
-
-init({
-  endpoint: 'https://your-api.com/bug-reports',
-  uiPosition: 'bottom-right',
-})
 ```
 
 ## Configuration
@@ -74,16 +63,12 @@ init({
   // Privacy — fields containing these strings are redacted
   sensitiveFields: ['password', 'token', 'secret', 'authorization', 'cookie', 'session', 'credit_card', 'cvv', 'ssn', 'cpf'],
 
-  // Where to send reports (if not set, downloads as JSON file)
-  endpoint: 'https://your-api.com/bug-reports',
-
   // Callback when report is generated
   onCapture: (report) => console.log(report),
 
-  // UI widget
-  ui: true,
-  uiPosition: 'bottom-right', // bottom-right | bottom-left | top-right | top-left
-  uiLabel: 'Reportar Bug',
+  // Debug session
+  debugSessionEndpoint: 'https://api.arvore.com.br/debug-sessions',
+  // debugToken is read automatically from the ?debug=<token> query param
 })
 ```
 
@@ -92,7 +77,7 @@ init({
 ```typescript
 import { BugJar } from '@arvoretech/bug-jar'
 
-const jar = new BugJar({ ui: false })
+const jar = new BugJar()
 jar.start()
 
 // Later, capture a report programmatically
@@ -144,7 +129,7 @@ ships when debug mode is actually used.
 - Sensitive fields are automatically redacted (passwords, tokens, secrets, etc.)
 - Password inputs are never captured
 - You control what gets captured via configuration
-- No data leaves the browser unless you configure an endpoint
+- No data leaves the browser unless a debug session is active
 - All processing happens client-side
 
 ## Browser Support
