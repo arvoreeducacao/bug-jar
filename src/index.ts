@@ -10,6 +10,13 @@ import { ScreenshotCollector } from "./collectors/screenshot";
 import { FeatureFlagCollector } from "./collectors/feature-flags";
 import { ScreenRecorder } from "./collectors/screen-recorder";
 import { BugJarUI } from "./ui";
+import { DebugBanner } from "./debug-banner";
+import {
+  readDebugTokenFromUrl,
+  fetchDebugSession,
+  uploadEncryptedReport,
+  type DebugSessionPayload,
+} from "./debug-session";
 import { generateId } from "./utils";
 import { generateSummary } from "./summary";
 import { exportAsZip } from "./export";
@@ -17,8 +24,9 @@ import { exportAsZip } from "./export";
 export type { BugJarConfig, BugReport } from "./types";
 export { generateSummary } from "./summary";
 export { exportAsZip } from "./export";
+export type { DebugSessionPayload } from "./debug-session";
 
-const VERSION = "0.2.0";
+const VERSION = "0.4.0";
 
 const DEFAULT_CONFIG: BugJarConfig = {
   maxNetworkEntries: 100,
@@ -51,6 +59,8 @@ const DEFAULT_CONFIG: BugJarConfig = {
   ui: true,
   uiPosition: "bottom-right",
   uiLabel: "Reportar Bug",
+  debugToken: undefined,
+  debugSessionEndpoint: undefined,
 };
 
 export class BugJar {
@@ -66,6 +76,8 @@ export class BugJar {
   private featureFlags: FeatureFlagCollector;
   private screenRecorder: ScreenRecorder;
   private ui: BugJarUI | null = null;
+  private debugBanner: DebugBanner | null = null;
+  private debugSession: DebugSessionPayload | null = null;
   private started = false;
 
   constructor(config: Partial<BugJarConfig> = {}) {
@@ -93,6 +105,12 @@ export class BugJar {
 
     if (this.config.captureWebVitals) {
       this.performance.start();
+    }
+
+    const debugToken = this.config.debugToken ?? readDebugTokenFromUrl();
+    if (debugToken) {
+      void this.startDebugSession(debugToken);
+      return;
     }
 
     if (this.config.ui) {
@@ -195,6 +213,54 @@ export class BugJar {
 
   getReport(): Promise<BugReport> {
     return this.capture();
+  }
+
+  private async startDebugSession(token: string): Promise<void> {
+    if (!this.config.debugSessionEndpoint) {
+      return;
+    }
+
+    const mountBanner = () => {
+      this.debugBanner = new DebugBanner(() => this.finishDebugSession());
+      this.debugBanner.mount();
+    };
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", mountBanner);
+    } else {
+      mountBanner();
+    }
+
+    try {
+      this.debugSession = await fetchDebugSession(
+        this.config.debugSessionEndpoint,
+        token,
+      );
+      await this.screenRecorder.start();
+    } catch (err) {
+      this.debugBanner?.setState(
+        "error",
+        err instanceof Error ? err.message : "Falha ao iniciar a sessão.",
+      );
+    }
+  }
+
+  private async finishDebugSession(): Promise<void> {
+    if (!this.debugSession) return;
+
+    try {
+      const videoBlob = await this.screenRecorder.stop();
+      this.debugBanner?.setState("encrypting");
+      const report = await this.capture("Debug session capture");
+      this.debugBanner?.setState("uploading");
+      await uploadEncryptedReport(this.debugSession, report, videoBlob);
+      this.debugBanner?.setState("done");
+    } catch (err) {
+      this.debugBanner?.setState(
+        "error",
+        err instanceof Error ? err.message : "Falha ao enviar o relatório.",
+      );
+    }
   }
 }
 
