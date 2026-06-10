@@ -9,13 +9,18 @@ import { StorageCollector } from "./collectors/storage";
 import { ScreenshotCollector } from "./collectors/screenshot";
 import { FeatureFlagCollector } from "./collectors/feature-flags";
 import { ScreenRecorder } from "./collectors/screen-recorder";
-import { DebugBanner } from "./debug-banner";
+import { SessionBorder } from "./session-border";
 import {
   readDebugTokenFromUrl,
   fetchDebugSession,
   uploadEncryptedReport,
   type DebugSessionPayload,
 } from "./debug-session";
+import {
+  readSessionToken,
+  persistSessionToken,
+  clearSessionToken,
+} from "./session-token";
 import { generateId } from "./utils";
 import { generateSummary } from "./summary";
 import { exportAsZip } from "./export";
@@ -25,7 +30,7 @@ export { generateSummary } from "./summary";
 export { exportAsZip } from "./export";
 export type { DebugSessionPayload } from "./debug-session";
 
-const VERSION = "0.4.0";
+const VERSION = "0.5.0";
 
 const DEFAULT_CONFIG: BugJarConfig = {
   maxNetworkEntries: 100,
@@ -71,8 +76,9 @@ export class BugJar {
   private screenshot: ScreenshotCollector;
   private featureFlags: FeatureFlagCollector;
   private screenRecorder: ScreenRecorder;
-  private debugBanner: DebugBanner | null = null;
+  private sessionBorder: SessionBorder | null = null;
   private debugSession: DebugSessionPayload | null = null;
+  private uploaded = false;
   private started = false;
 
   constructor(config: Partial<BugJarConfig> = {}) {
@@ -102,7 +108,8 @@ export class BugJar {
       this.performance.start();
     }
 
-    const debugToken = this.config.debugToken ?? readDebugTokenFromUrl();
+    const debugToken =
+      this.config.debugToken ?? readDebugTokenFromUrl() ?? readSessionToken();
     if (debugToken) {
       void this.startDebugSession(debugToken);
     }
@@ -117,7 +124,7 @@ export class BugJar {
     this.errors.stop();
     this.userActions.stop();
     this.performance.stop();
-    this.debugBanner?.unmount();
+    this.sessionBorder?.unmount();
   }
 
   async startRecording(): Promise<void> {
@@ -201,15 +208,15 @@ export class BugJar {
       return;
     }
 
-    const mountBanner = () => {
-      this.debugBanner = new DebugBanner(() => this.finishDebugSession());
-      this.debugBanner.mount();
+    const mountBorder = () => {
+      this.sessionBorder = new SessionBorder();
+      this.sessionBorder.mount();
     };
 
     if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", mountBanner);
+      document.addEventListener("DOMContentLoaded", mountBorder);
     } else {
-      mountBanner();
+      mountBorder();
     }
 
     try {
@@ -217,31 +224,41 @@ export class BugJar {
         this.config.debugSessionEndpoint,
         token,
       );
+      persistSessionToken(this.debugSession.token, this.debugSession.expiresAt);
+      this.registerFlushHandlers();
       await this.screenRecorder.start();
-    } catch (err) {
-      this.debugBanner?.setState(
-        "error",
-        err instanceof Error ? err.message : "Falha ao iniciar a sessão.",
-      );
+    } catch {
+      this.sessionBorder?.unmount();
     }
   }
 
-  private async finishDebugSession(): Promise<void> {
-    if (!this.debugSession) return;
+  private registerFlushHandlers(): void {
+    const flush = () => {
+      void this.flushDebugSession();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flush();
+    });
+  }
+
+  private async flushDebugSession(): Promise<void> {
+    if (!this.debugSession || this.uploaded) return;
+    this.uploaded = true;
 
     try {
       const videoBlob = await this.screenRecorder.stop();
-      this.debugBanner?.setState("encrypting");
       const report = await this.capture("Debug session capture");
-      this.debugBanner?.setState("uploading");
       await uploadEncryptedReport(this.debugSession, report, videoBlob);
-      this.debugBanner?.setState("done");
-    } catch (err) {
-      this.debugBanner?.setState(
-        "error",
-        err instanceof Error ? err.message : "Falha ao enviar o relatório.",
-      );
+    } catch {
+      this.uploaded = false;
     }
+  }
+
+  endDebugSession(): void {
+    clearSessionToken();
+    this.sessionBorder?.unmount();
+    void this.flushDebugSession();
   }
 }
 

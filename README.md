@@ -112,16 +112,23 @@ Flow:
 1. Staff (admin) calls `POST /debug-sessions` with the target app URL and gets back
    a `debugLink` (`https://app.../?debug=<token>`), the presigned PUT URL, the
    server public key, and an expiry.
-2. The user opens the link. Bug Jar detects `?debug=<token>`, fetches the session
-   from `debugSessionEndpoint`, starts screen recording, and shows a top banner.
-3. The user clicks **Finalizar e enviar**. Bug Jar builds the ZIP, encrypts it
-   (libsodium sealed box + secretbox hybrid), and uploads the encrypted blob to S3.
-4. Staff downloads the `.bin` via `GET /debug-sessions/:token/download` and
-   decrypts it offline with the private key.
+2. The user opens the link. Bug Jar detects `?debug=<token>`, persists the token in
+   a `.arvore.com.br` cookie, fetches the session, starts screen recording, and
+   shows an animated **session border** (no button, no banner).
+3. The user just uses the app. The session survives navigation across apps
+   (app-v2 → legacy → reader) by re-hydrating the token from the cookie on each
+   page. Each page uploads its encrypted package to S3 under the same token when
+   it unloads (`pagehide`/`visibilitychange`).
+4. Staff downloads the `.bin` packages via `GET /debug-sessions/:token/download`
+   and decrypts them offline with the private key.
 
 The package leaves the browser already unreadable; only the holder of the X25519
 private key can open it. `libsodium-wrappers` is loaded dynamically, so it only
 ships when debug mode is actually used.
+
+> Cross-app continuity works because all apps live under `*.arvore.com.br` and
+> share the session cookie. Screen recording restarts per app (the browser does
+> not allow `getDisplayMedia` to persist across full page loads / origins).
 
 
 ## Privacy & Security

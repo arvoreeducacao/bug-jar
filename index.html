@@ -88,12 +88,12 @@
       <strong>Como usar:</strong><br />
       1. Abra esta página com <code>?debug=&lt;token&gt;</code> (link gerado pelo
       backend)<br />
-      2. A gravação de tela inicia automaticamente e um banner aparece no
-      topo<br />
-      3. Reproduza o bug normalmente<br />
-      4. Clique em "Finalizar e enviar"<br />
-      5. O pacote (report.json + summary.md + screenshot.png + recording.webm)
-      é cifrado no navegador e enviado pro S3
+      2. A gravação inicia automaticamente e uma borda animada aparece em volta
+      da tela — sem botão<br />
+      3. Reproduza o bug normalmente e navegue à vontade (a sessão continua
+      entre as páginas via cookie)<br />
+      4. Cada página envia seu pacote cifrado pro S3 ao sair<br />
+      5. O time baixa os pacotes e decifra offline com a chave privada
     </div>
 
     <script type="module">
