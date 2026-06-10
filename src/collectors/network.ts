@@ -54,6 +54,29 @@ export class NetworkCollector {
     this.buffer.clear();
   }
 
+  addIgnoreUrl(url: string): void {
+    if (!this.config.ignoreUrls) this.config.ignoreUrls = [];
+    if (!this.config.ignoreUrls.includes(url)) {
+      this.config.ignoreUrls.push(url);
+    }
+  }
+
+  getRawFetch(): typeof fetch {
+    return this.originalFetch ?? window.fetch.bind(window);
+  }
+
+  private shouldIgnore(url: string): boolean {
+    const ignore = this.config.ignoreUrls;
+    if (!ignore || ignore.length === 0) return false;
+    return ignore.some((pattern) => url.includes(pattern));
+  }
+
+  private resolveUrl(input: RequestInfo | URL): string {
+    if (typeof input === "string") return input;
+    if (input instanceof URL) return input.href;
+    return (input as Request).url;
+  }
+
   private interceptFetch(): void {
     this.originalFetch = window.fetch.bind(window);
     const self = this;
@@ -62,6 +85,9 @@ export class NetworkCollector {
       input: RequestInfo | URL,
       init?: RequestInit,
     ): Promise<Response> {
+      if (self.shouldIgnore(self.resolveUrl(input))) {
+        return self.originalFetch!(input, init);
+      }
       const startTime = performance.now();
       const entry: NetworkEntry = {
         id: generateId(),
@@ -151,6 +177,9 @@ export class NetworkCollector {
     XMLHttpRequest.prototype.send = function (
       body?: Document | XMLHttpRequestBodyInit | null,
     ) {
+      if (self.shouldIgnore((this as any).__bugjar_url || "")) {
+        return self.originalXhrSend!.apply(this, arguments as any);
+      }
       const startTime = performance.now();
       const entry: NetworkEntry = {
         id: generateId(),
@@ -215,11 +244,15 @@ export class NetworkCollector {
       url: string | URL,
       data?: BodyInit | null,
     ): boolean {
+      const beaconUrl = typeof url === "string" ? url : url.href;
+      if (self.shouldIgnore(beaconUrl)) {
+        return self.originalSendBeacon!(url, data);
+      }
       const entry: NetworkEntry = {
         id: generateId(),
         timestamp: Date.now(),
         method: "POST",
-        url: typeof url === "string" ? url : url.href,
+        url: beaconUrl,
         requestHeaders: {},
         requestBody: self.safeParseBody(data),
         status: null,

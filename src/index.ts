@@ -32,7 +32,7 @@ export { generateSummary } from "./summary";
 export { exportAsZip } from "./export";
 export type { DebugSessionPayload } from "./debug-session";
 
-const VERSION = "0.6.0";
+const VERSION = "0.6.1";
 
 const DEFAULT_CONFIG: BugJarConfig = {
   maxNetworkEntries: 100,
@@ -84,6 +84,7 @@ export class BugJar {
   private videoUploader: StreamUploader | null = null;
   private pageId = generateId();
   private dataInterval: ReturnType<typeof setInterval> | null = null;
+  private lastFlushTs = 0;
   private finalized = false;
   private started = false;
 
@@ -227,16 +228,18 @@ export class BugJar {
     }
 
     try {
-      this.debugSession = await fetchDebugSession(endpoint, token);
+      const rawFetch = this.network.getRawFetch();
+      this.debugSession = await fetchDebugSession(endpoint, token, rawFetch);
       persistSessionToken(this.debugSession.token, this.debugSession.expiresAt);
 
-      const chunkUrlFetcher = makeChunkUrlFetcher(endpoint);
+      const chunkUrlFetcher = makeChunkUrlFetcher(endpoint, rawFetch);
       this.dataUploader = new StreamUploader(
         this.debugSession.token,
         this.pageId,
         "data",
         this.debugSession.publicKey,
         chunkUrlFetcher,
+        rawFetch,
       );
       this.videoUploader = new StreamUploader(
         this.debugSession.token,
@@ -244,14 +247,21 @@ export class BugJar {
         "video",
         this.debugSession.publicKey,
         chunkUrlFetcher,
+        rawFetch,
       );
 
-      void uploadPageMeta(endpoint, this.debugSession.token, this.pageId, {
-        url: window.location.href,
-        title: document.title,
-        startedAt: Date.now(),
-        environment: this.environment.collect(),
-      });
+      void uploadPageMeta(
+        endpoint,
+        this.debugSession.token,
+        this.pageId,
+        {
+          url: window.location.href,
+          title: document.title,
+          startedAt: Date.now(),
+          environment: this.environment.collect(),
+        },
+        rawFetch,
+      );
 
       this.screenRecorder.setChunkHandler((data) => {
         this.videoUploader?.pushChunk(data);
@@ -268,17 +278,24 @@ export class BugJar {
   private startDataStreaming(): void {
     const pushSnapshot = (final: boolean) => {
       if (!this.dataUploader) return;
+      const since = this.lastFlushTs;
+      const now = Date.now();
       const snapshot = {
         pageId: this.pageId,
-        timestamp: Date.now(),
+        timestamp: now,
         url: window.location.href,
-        network: this.network.getEntries(),
-        console: this.console.getEntries(),
-        errors: this.errors.getEntries(),
-        userActions: this.userActions.getEntries(),
-        storage: this.storage.collect(),
-        featureFlags: this.featureFlags.collect(),
+        network: this.network
+          .getEntries()
+          .filter((e) => e.timestamp > since),
+        console: this.console
+          .getEntries()
+          .filter((e) => e.timestamp > since),
+        errors: this.errors.getEntries().filter((e) => e.timestamp > since),
+        userActions: this.userActions
+          .getEntries()
+          .filter((e) => e.timestamp > since),
       };
+      this.lastFlushTs = now;
       const bytes = new TextEncoder().encode(JSON.stringify(snapshot) + "\n");
       this.dataUploader.pushChunk(bytes, final);
     };
@@ -309,10 +326,11 @@ export class BugJar {
       pageId: this.pageId,
       timestamp: Date.now(),
       url: window.location.href,
-      network: this.network.getEntries(),
-      console: this.console.getEntries(),
-      errors: this.errors.getEntries(),
-      userActions: this.userActions.getEntries(),
+      final: true,
+      network: this.network.getEntries().filter((e) => e.timestamp > this.lastFlushTs),
+      console: this.console.getEntries().filter((e) => e.timestamp > this.lastFlushTs),
+      errors: this.errors.getEntries().filter((e) => e.timestamp > this.lastFlushTs),
+      userActions: this.userActions.getEntries().filter((e) => e.timestamp > this.lastFlushTs),
       storage: this.storage.collect(),
       featureFlags: this.featureFlags.collect(),
       screenshot: this.config.captureScreenshot

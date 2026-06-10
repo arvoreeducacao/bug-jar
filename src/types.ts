@@ -17,6 +17,7 @@ export interface BugJarConfig {
   onCapture?: (report: BugReport) => void;
   debugToken?: string;
   debugSessionEndpoint?: string;
+  ignoreUrls?: string[];
 }
 
 export interface NetworkEntry {
