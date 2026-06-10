@@ -16,6 +16,7 @@ import {
   makeChunkUrlFetcher,
   uploadPageMeta,
   type DebugSessionPayload,
+  type DebugSessionError,
 } from "./debug-session";
 import { StreamUploader } from "./stream-uploader";
 import { SpeedtestCollector } from "./collectors/speedtest";
@@ -263,8 +264,12 @@ export class BugJar {
         this.videoUploader?.pushChunk(data);
       });
       void this.screenRecorder.start();
-    } catch {
+    } catch (error) {
       this.sessionBorder?.unmount();
+      const status = (error as DebugSessionError)?.status;
+      if (status === 401 || status === 403 || status === 404) {
+        clearSessionToken();
+      }
     }
   }
 

@@ -37,7 +37,8 @@ export class ScreenRecorder {
           if (this.onChunk) {
             void event.data
               .arrayBuffer()
-              .then((buf) => this.onChunk?.(new Uint8Array(buf), false));
+              .then((buf) => this.onChunk?.(new Uint8Array(buf), false))
+              .catch(() => undefined);
           }
         }
       };
