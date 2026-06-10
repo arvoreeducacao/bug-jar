@@ -1,12 +1,27 @@
 const COOKIE_NAME = "bug-jar-session";
 
 function resolveCookieDomain(): string | undefined {
-  if (typeof window === "undefined") return undefined;
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return undefined;
+  }
   const host = window.location.hostname;
+  if (/^[0-9.]+$/.test(host) || host === "localhost") {
+    return undefined;
+  }
   const parts = host.split(".");
   if (parts.length < 2) return undefined;
-  const root = parts.slice(-2).join(".");
-  return `.${root}`;
+
+  const probe = "bug-jar-domain-probe";
+  for (let i = parts.length - 2; i >= 0; i--) {
+    const candidate = `.${parts.slice(i).join(".")}`;
+    document.cookie = `${probe}=1; Path=/; Domain=${candidate}; SameSite=Lax`;
+    const accepted = document.cookie.includes(`${probe}=1`);
+    document.cookie = `${probe}=; Path=/; Domain=${candidate}; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+    if (accepted) {
+      return candidate;
+    }
+  }
+  return undefined;
 }
 
 export function readSessionToken(): string | null {
