@@ -34,7 +34,7 @@ export { generateSummary } from "./summary";
 export { exportAsZip } from "./export";
 export type { DebugSessionPayload } from "./debug-session";
 
-const VERSION = "0.7.1";
+const VERSION = "0.7.2";
 
 const DEFAULT_CONFIG: BugJarConfig = {
   maxNetworkEntries: 100,
