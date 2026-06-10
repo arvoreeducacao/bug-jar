@@ -133,6 +133,21 @@ Flow:
    per-page stream, and writes `<pageId>/data.jsonl`, `<pageId>/video.webm`,
    `<pageId>/meta.json`.
 
+## Speed test
+
+At the start of each page, Bug Jar runs a fast.com-style network speed test
+against the Árvore backend and stores the result in that page's `meta.json`:
+
+- **latency** — minimum and jitter from repeated `GET /speedtest/ping`
+- **download (Mbps)** — 8 MB pulled across 4 parallel streams
+  (`GET /speedtest/download?bytes=N`)
+- **upload (Mbps)** — 4 MB sent to `POST /speedtest/upload` (server discards it)
+
+It measures the real end-to-end throughput between the user and our
+infrastructure (which is exactly what we want when debugging "the app is slow").
+The test runs once per page and is best-effort — failures leave the fields null
+without blocking the session.
+
 ## Encryption
 
 Each stream (data and video, per page) is encrypted with libsodium

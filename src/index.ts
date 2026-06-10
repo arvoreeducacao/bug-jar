@@ -18,6 +18,7 @@ import {
   type DebugSessionPayload,
 } from "./debug-session";
 import { StreamUploader } from "./stream-uploader";
+import { SpeedtestCollector } from "./collectors/speedtest";
 import {
   readSessionToken,
   persistSessionToken,
@@ -32,7 +33,7 @@ export { generateSummary } from "./summary";
 export { exportAsZip } from "./export";
 export type { DebugSessionPayload } from "./debug-session";
 
-const VERSION = "0.6.1";
+const VERSION = "0.7.0";
 
 const DEFAULT_CONFIG: BugJarConfig = {
   maxNetworkEntries: 100,
@@ -250,18 +251,7 @@ export class BugJar {
         rawFetch,
       );
 
-      void uploadPageMeta(
-        endpoint,
-        this.debugSession.token,
-        this.pageId,
-        {
-          url: window.location.href,
-          title: document.title,
-          startedAt: Date.now(),
-          environment: this.environment.collect(),
-        },
-        rawFetch,
-      );
+      void this.runSpeedtest(endpoint, this.debugSession.token, rawFetch);
 
       this.screenRecorder.setChunkHandler((data) => {
         this.videoUploader?.pushChunk(data);
@@ -346,6 +336,33 @@ export class BugJar {
       this.dataUploader?.flush() ?? Promise.resolve(),
       this.videoUploader?.flush() ?? Promise.resolve(),
     ]);
+  }
+
+  private async runSpeedtest(
+    endpoint: string,
+    token: string,
+    rawFetch: typeof fetch,
+  ): Promise<void> {
+    let speedtest = null;
+    try {
+      const collector = new SpeedtestCollector(endpoint, token, rawFetch);
+      speedtest = await collector.run();
+    } catch {
+      /* speedtest is best-effort */
+    }
+    await uploadPageMeta(
+      endpoint,
+      token,
+      this.pageId,
+      {
+        url: window.location.href,
+        title: document.title,
+        startedAt: Date.now(),
+        environment: this.environment.collect(),
+        speedtest,
+      },
+      rawFetch,
+    );
   }
 
   endDebugSession(): void {
