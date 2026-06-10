@@ -105,6 +105,40 @@ await fetch('/api/bugs', {
 })
 ```
 
+## Debug Session Mode (encrypted upload to S3)
+
+For non-technical users, staff can generate a one-time debug link. The user opens
+the link in the real app, reproduces the bug, and Bug Jar records the whole flow,
+encrypts the package end-to-end in the browser, and uploads it straight to a
+private S3 bucket via a presigned URL. No AWS credentials ever reach the browser.
+
+```html
+<script src="https://unpkg.com/@arvoretech/bug-jar"></script>
+<script>
+  BugJar.init({
+    debugSessionEndpoint: 'https://api.arvore.com.br/debug-sessions',
+    // debugToken is read automatically from the ?debug=<token> query param
+  })
+</script>
+```
+
+Flow:
+
+1. Staff (admin) calls `POST /debug-sessions` with the target app URL and gets back
+   a `debugLink` (`https://app.../?debug=<token>`), the presigned PUT URL, the
+   server public key, and an expiry.
+2. The user opens the link. Bug Jar detects `?debug=<token>`, fetches the session
+   from `debugSessionEndpoint`, starts screen recording, and shows a top banner.
+3. The user clicks **Finalizar e enviar**. Bug Jar builds the ZIP, encrypts it
+   (libsodium sealed box + secretbox hybrid), and uploads the encrypted blob to S3.
+4. Staff downloads the `.bin` via `GET /debug-sessions/:token/download` and
+   decrypts it offline with the private key.
+
+The package leaves the browser already unreadable; only the holder of the X25519
+private key can open it. `libsodium-wrappers` is loaded dynamically, so it only
+ships when debug mode is actually used.
+
+
 ## Privacy & Security
 
 - Sensitive fields are automatically redacted (passwords, tokens, secrets, etc.)

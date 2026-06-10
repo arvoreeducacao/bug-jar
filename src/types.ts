@@ -20,6 +20,8 @@ export interface BugJarConfig {
   uiLabel: string;
   hideOnMobile?: boolean;
   uiCompactOnMobile?: boolean;
+  debugToken?: string;
+  debugSessionEndpoint?: string;
 }
 
 export interface NetworkEntry {
