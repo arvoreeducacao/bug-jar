@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 const fs = require("node:fs");
 const path = require("node:path");
-const { execSync } = require("node:child_process");
+const { execFileSync } = require("node:child_process");
 const sodium = require("libsodium-wrappers");
 
 const MAGIC = [0x42, 0x4a, 0x53, 0x31];
@@ -10,31 +10,46 @@ function usage() {
   console.error(
     `Usage: node scripts/decrypt-session.cjs <token> <out-dir>
 
-Reads the X25519 private key from AWS Secrets Manager (bug-jar/keypair),
-fetches the admin download manifest for <token> from the API, downloads all
-encrypted chunks, decrypts each per-page stream, and reconstructs:
+Reads the X25519 private key, fetches the admin download manifest for <token>
+from the API, downloads all encrypted chunks, decrypts each per-page stream,
+and reconstructs:
   <out-dir>/<pageId>/data.jsonl
   <out-dir>/<pageId>/video.webm
   <out-dir>/<pageId>/meta.json
 
 Env:
-  BUG_JAR_API        Base URL, e.g. https://livros.arvore.com.br/debug-sessions
-  BUG_JAR_API_TOKEN  Admin JWT (Bearer) for the download endpoint
-  AWS_PROFILE        AWS profile to read the secret (default: arvore-prd)
-  AWS_REGION         Secret region (default: sa-east-1)`,
+  BUG_JAR_API           Base URL, e.g. https://your-backend.example.com/debug-sessions
+  BUG_JAR_API_TOKEN     Admin JWT (Bearer) for the download endpoint
+  BUG_JAR_PRIVATE_KEY   Base64 X25519 private key (preferred)
+
+Optional secret-manager fallback (used only when BUG_JAR_PRIVATE_KEY is unset):
+  BUG_JAR_KEY_CMD       Command that prints a JSON object with a "privateKey"
+                        field to stdout, e.g.
+                        "aws secretsmanager get-secret-value --secret-id my/keypair --query SecretString --output text"`,
   );
   process.exit(1);
 }
 
 function readPrivateKey() {
-  const profile = process.env.AWS_PROFILE || "arvore-prd";
-  const region = process.env.AWS_REGION || "sa-east-1";
-  const raw = execSync(
-    `aws secretsmanager get-secret-value --secret-id bug-jar/keypair --query SecretString --output text --profile ${profile} --region ${region}`,
-    { encoding: "utf-8" },
-  );
-  const parsed = JSON.parse(raw);
-  if (!parsed.privateKey) throw new Error("privateKey not found in secret");
+  const direct = process.env.BUG_JAR_PRIVATE_KEY;
+  if (direct) return direct.trim();
+
+  const keyCmd = process.env.BUG_JAR_KEY_CMD;
+  if (!keyCmd) {
+    throw new Error(
+      "Set BUG_JAR_PRIVATE_KEY (base64 X25519 private key), or BUG_JAR_KEY_CMD to fetch it",
+    );
+  }
+
+  const [cmd, ...args] = keyCmd.split(/\s+/);
+  const raw = execFileSync(cmd, args, { encoding: "utf-8" });
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return raw.trim();
+  }
+  if (!parsed.privateKey) throw new Error("privateKey not found in BUG_JAR_KEY_CMD output");
   return parsed.privateKey;
 }
 
