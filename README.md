@@ -122,18 +122,10 @@ Flow:
    Chunks are uploaded to `debug/<token>/<pageId>/<stream>/<seq>.bin` via per-chunk
    presigned PUT URLs (`POST /debug-sessions/:token/chunk-url`). Page metadata goes
    to `debug/<token>/<pageId>/meta.json` (`POST /debug-sessions/:token/meta`).
-4. Staff reconstructs the session offline:
-   ```bash
-   BUG_JAR_API=https://your-backend.example.com/debug-sessions \
-   BUG_JAR_API_TOKEN=<admin-jwt> \
-   BUG_JAR_PRIVATE_KEY=<base64-x25519-private-key> \
-   node scripts/decrypt-session.cjs <token> ./out
-   ```
-   This reads the X25519 private key (from `BUG_JAR_PRIVATE_KEY`, or optionally from
-   a secret manager — see the script header),
-   downloads all chunks via `GET /debug-sessions/:token/download`, decrypts each
-   per-page stream, and writes `<pageId>/data.jsonl`, `<pageId>/video.webm`,
-   `<pageId>/meta.json`.
+4. Staff reconstructs the session offline by downloading the encrypted chunks via
+   the admin endpoint (`GET /debug-sessions/:token/download`) and decrypting each
+   per-page stream with the X25519 private key, producing `<pageId>/data.jsonl`,
+   `<pageId>/video.webm`, and `<pageId>/meta.json`.
 
 ## Speed test
 
