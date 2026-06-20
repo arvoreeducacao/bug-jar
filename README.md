@@ -34,7 +34,7 @@ opens it in the real app, and the encrypted package is uploaded to S3. See
 <script src="https://unpkg.com/@arvoretech/bug-jar"></script>
 <script>
   BugJar.init({
-    debugSessionEndpoint: 'https://livros.arvore.com.br/debug-sessions',
+    debugSessionEndpoint: 'https://your-backend.example.com/debug-sessions',
   })
 </script>
 ```
@@ -67,7 +67,7 @@ init({
   onCapture: (report) => console.log(report),
 
   // Debug session
-  debugSessionEndpoint: 'https://livros.arvore.com.br/debug-sessions',
+  debugSessionEndpoint: 'https://your-backend.example.com/debug-sessions',
   // debugToken is read automatically from the ?debug=<token> query param
 })
 ```
@@ -101,7 +101,7 @@ private S3 bucket via a presigned URL. No AWS credentials ever reach the browser
 <script src="https://unpkg.com/@arvoretech/bug-jar"></script>
 <script>
   BugJar.init({
-    debugSessionEndpoint: 'https://livros.arvore.com.br/debug-sessions',
+    debugSessionEndpoint: 'https://your-backend.example.com/debug-sessions',
     // debugToken is read automatically from the ?debug=<token> query param
   })
 </script>
@@ -112,26 +112,20 @@ Flow:
 1. Staff (admin) calls `POST /debug-sessions` with the target app URL and gets back
    a `debugLink` (`https://app.../?debug=<token>`), the server public key, and an expiry.
 2. The user opens the link. Bug Jar detects `?debug=<token>`, persists the token in
-   a `.arvore.com.br` cookie, fetches the session, starts screen recording, and
-   shows an animated **session border** (no button, no banner).
-3. The user just uses the app. The session survives navigation across apps
-   (app-v2 → legacy → reader) by re-hydrating the token from the cookie on each
+   a cookie scoped to your apex domain, fetches the session, starts screen recording,
+   and shows an animated **session border** (no button, no banner).
+3. The user just uses the app. The session survives navigation across apps that share
+   the cookie domain by re-hydrating the token from the cookie on each
    page. Each page streams **encrypted chunks** to S3 in real time:
    - **data** (network/console/errors/actions/storage) every 5s as JSONL
    - **video** chunks straight from `MediaRecorder` as they are produced
    Chunks are uploaded to `debug/<token>/<pageId>/<stream>/<seq>.bin` via per-chunk
    presigned PUT URLs (`POST /debug-sessions/:token/chunk-url`). Page metadata goes
    to `debug/<token>/<pageId>/meta.json` (`POST /debug-sessions/:token/meta`).
-4. Staff reconstructs the session offline:
-   ```bash
-   BUG_JAR_API=https://livros.arvore.com.br/debug-sessions \
-   BUG_JAR_API_TOKEN=<admin-jwt> \
-   node scripts/decrypt-session.cjs <token> ./out
-   ```
-   This reads the X25519 private key from Secrets Manager (`bug-jar/keypair`),
-   downloads all chunks via `GET /debug-sessions/:token/download`, decrypts each
-   per-page stream, and writes `<pageId>/data.jsonl`, `<pageId>/video.webm`,
-   `<pageId>/meta.json`.
+4. Staff reconstructs the session offline by downloading the encrypted chunks via
+   the admin endpoint (`GET /debug-sessions/:token/download`) and decrypting each
+   per-page stream with the X25519 private key, producing `<pageId>/data.jsonl`,
+   `<pageId>/video.webm`, and `<pageId>/meta.json`.
 
 ## Speed test
 
@@ -159,8 +153,8 @@ Chunks leave the browser already unreadable; only the holder of the X25519 priva
 key can open them. `libsodium-wrappers` is loaded dynamically, so it only ships
 when debug mode is actually used.
 
-> Cross-app continuity works because all apps live under `*.arvore.com.br` and
-> share the session cookie. Screen recording restarts per app (the browser does
+> Cross-app continuity works because all apps share a cookie scoped to the same
+> apex domain. Screen recording restarts per app (the browser does
 > not allow `getDisplayMedia` to persist across full page loads / origins), so the
 > video is reconstructed per page rather than as one continuous file.
 
