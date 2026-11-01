@@ -56,7 +56,7 @@ jobs:
         run: pnpm build
 
       - name: Install latest npm
-        run: npm install -g npm@latest
+        run: npm install -g npm@11
 
       - name: Publish
         run: npm publish --access public --provenance
