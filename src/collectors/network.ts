@@ -206,8 +206,9 @@ export class NetworkCollector {
           this.getAllResponseHeaders(),
         );
         entry.duration = performance.now() - startTime;
-        entry.responseSize = this.responseText?.length || null;
-        entry.responseBody = self.safeParseJson(this.responseText);
+        const response = self.readXhrResponse(this);
+        entry.responseSize = response.size;
+        entry.responseBody = response.body;
         entry.requestBody = maskSensitiveData(
           entry.requestBody,
           self.config.sensitiveFields,
@@ -329,6 +330,35 @@ export class NetworkCollector {
     if (body instanceof ArrayBuffer)
       return `[ArrayBuffer: ${body.byteLength} bytes]`;
     return String(body);
+  }
+
+  private readXhrResponse(xhr: XMLHttpRequest): {
+    size: number | null;
+    body: unknown;
+  } {
+    try {
+      const type = xhr.responseType;
+      if (type === "" || type === "text") {
+        const text = xhr.responseText;
+        return { size: text?.length || null, body: this.safeParseJson(text) };
+      }
+      const value: unknown = xhr.response;
+      if (value === null || value === undefined) return { size: null, body: null };
+      if (type === "json") {
+        const text = JSON.stringify(value);
+        return { size: text?.length || null, body: this.safeParseJson(text) };
+      }
+      if (value instanceof Blob)
+        return { size: value.size, body: `[Blob: ${value.size} bytes]` };
+      if (value instanceof ArrayBuffer)
+        return {
+          size: value.byteLength,
+          body: `[ArrayBuffer: ${value.byteLength} bytes]`,
+        };
+      return { size: null, body: `[${type}]` };
+    } catch {
+      return { size: null, body: "[Unable to read response]" };
+    }
   }
 
   private safeParseJson(text: string | null | undefined): unknown {
